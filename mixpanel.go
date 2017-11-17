@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	ErrTrackFailed = errors.New("Mixpanel did not return 1 when tracking")
+	ErrTrackFailed = errors.New("mixpanel did not return 1 when tracking")
 
 	IgnoreTime *time.Time = &time.Time{}
 )
@@ -23,6 +23,9 @@ type Mixpanel interface {
 
 	// Set properties for a mixpanel user.
 	Update(distinctId string, u *Update) error
+
+	// Unset properties for a mixpanel user.
+	Unset(distinctId string, u *Unset) error
 
 	Alias(distinctId, newId string) error
 }
@@ -63,6 +66,24 @@ type Update struct {
 	// Custom properties. At least one must be specified.
 	Properties map[string]interface{}
 }
+
+// An update of a user in mixpanel with unset operation
+type Unset struct {
+	// IP-address of the user. Leave empty to use autodetect, or set to "0" to
+	// not specify an ip-address at all.
+	IP string
+
+	// Timestamp. Set to nil to use the current time, or IgnoreTime to not use a
+	// timestamp.
+	Timestamp *time.Time
+
+	// Update operation "$unset" only
+	Operation string
+
+	// Custom properties. At least one must be specified.
+	Properties []string
+}
+
 
 // Track create a events to current distinct id
 func (m *mixpanel) Alias(distinctId, newId string) error {
@@ -108,6 +129,28 @@ func (m *mixpanel) Track(distinctId, eventName string, e *Event) error {
 // Updates a user in mixpanel. See
 // https://mixpanel.com/help/reference/http#people-analytics-updates
 func (m *mixpanel) Update(distinctId string, u *Update) error {
+	params := map[string]interface{}{
+		"$token":       m.Token,
+		"$distinct_id": distinctId,
+	}
+
+	if u.IP != "" {
+		params["$ip"] = u.IP
+	}
+	if u.Timestamp == IgnoreTime {
+		params["$ignore_time"] = true
+	} else if u.Timestamp != nil {
+		params["$time"] = u.Timestamp.Unix()
+	}
+
+	params[u.Operation] = u.Properties
+
+	return m.send("engage", params)
+}
+
+// Unset properties for a user in mixpanel. See
+// https://mixpanel.com/help/reference/http#people-analytics-updates
+func (m *mixpanel) Unset(distinctId string, u *Unset) error {
 	params := map[string]interface{}{
 		"$token":       m.Token,
 		"$distinct_id": distinctId,
